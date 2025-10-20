@@ -1,0 +1,68 @@
+name: 同步上游仓库（Upstream Sync）
+
+permissions:
+  contents: write   # 允许写入到本仓库
+
+on:
+  schedule:
+    - cron: "0 0 * * *"   # 每天 00:00 UTC 自动运行（北京时间早 8 点）
+  workflow_dispatch:       # 允许手动触发执行
+
+jobs:
+  sync_with_upstream:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.repository.fork }}   # 仅在 fork 仓库中运行
+
+    steps:
+      - name: 检出当前仓库
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 拉取完整提交历史，确保合并正确
+
+      - name: 自动添加并检测上游仓库
+        run: |
+          echo "🔍 正在识别上游仓库..."
+
+          # 从当前远程URL自动推断上游路径
+          # 例如：你的是 yourname/WorkerVless2sub → 上游是 cmliu/WorkerVless2sub
+          UPSTREAM_URL=$(git config --get remote.origin.url | sed "s#${{ github.repository_owner }}/#${{ github.repository_owner }}/../#")
+          UPSTREAM_URL=$(echo "$UPSTREAM_URL" | sed 's#\.\./#/#')
+          echo "上游仓库地址：$UPSTREAM_URL"
+
+          # 确保不存在旧的 upstream
+          git remote remove upstream 2>/dev/null || true
+          git remote add upstream "$UPSTREAM_URL"
+
+          # 自动检测上游默认分支（无论是 main / master / dev 等）
+          UP_BRANCH=$(git ls-remote --symref upstream HEAD | awk '/^ref:/ {print $2}' | sed 's#refs/heads/##')
+          echo "检测到上游默认分支：$UP_BRANCH"
+          echo "UP_BRANCH=$UP_BRANCH" >> $GITHUB_ENV
+
+          # 拉取上游最新提交
+          git fetch upstream $UP_BRANCH
+
+      - name: 检查上游是否有新提交
+        id: check
+        run: |
+          LOCAL_HASH=$(git rev-parse HEAD)
+          UP_HASH=$(git rev-parse upstream/${UP_BRANCH})
+
+          if [ "$LOCAL_HASH" = "$UP_HASH" ]; then
+            echo "ℹ️ 上游没有新提交，跳过同步。"
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "✅ 检测到上游更新。"
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 合并上游变更并推送到自己仓库
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          echo "🚀 正在合并上游分支：${UP_BRANCH}"
+          git merge upstream/${UP_BRANCH} --no-edit
+          git push origin HEAD:${{ github.ref_name }}
+          echo "🎉 同步完成，已推送到你的仓库。"
+
+      - name: 无变更提示
+        if: steps.check.outputs.changed != 'true'
+        run: echo "✅ 上游无更新，本次同步跳过。"
