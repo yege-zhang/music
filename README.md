@@ -1,7 +1,7 @@
 # 云音乐播放器 - Cloudflare Pages 部署版本
 
 这是一个基于 HTML、CSS 和 JavaScript 的在线音乐播放器，可以轻松部署到 Cloudflare Pages 上。
-
+音乐源来自……（自行查看，严禁商业以及非法用途）
 ## 功能特性
 
 - 搜索多个音乐平台的歌曲（网易云音乐、QQ音乐、酷我音乐等）
